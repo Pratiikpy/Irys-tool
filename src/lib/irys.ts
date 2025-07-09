@@ -1,7 +1,7 @@
 import { WebUploader } from "@irys/web-upload";
-import { WebEthereum } from "@irys/web-upload-ethereum";
-import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
-import { BrowserProvider } from "ethers";
+import { WebIrys } from "@irys/web-upload-irys";
+import { EthersV5Adapter } from "@irys/web-upload-irys-ethers-v5";
+import { ethers } from "ethers";
 import { IRYS_GATEWAY, IRYS_RPC_URL, IRYS_NETWORK, APP_NAME } from "./constants";
 import type { HaikuData, IrysReceipt } from "./types";
 
@@ -13,21 +13,16 @@ export async function getIrys() {
       throw new Error("MetaMask is not installed!");
     }
 
-    const provider = new BrowserProvider(window.ethereum);
-    const network = IRYS_NETWORK;
+    // Use ethers v5 for compatibility with IRYS adapter
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
     
-    const uploader = WebUploader(WebEthereum)
-      .withAdapter(EthersV6Adapter(provider))
+    // Configure for IRYS token
+    const uploader = WebUploader(WebIrys)
+      .withAdapter(EthersV5Adapter(provider))
       .withRpc(IRYS_RPC_URL);
     
-    // Apply network selection
-    if (network === "devnet") {
-      irysInstance = await uploader.devnet();
-    } else if (network === "mainnet") {
-      irysInstance = await uploader.mainnet();
-    } else {
-      throw new Error(`Unknown network: ${network}`);
-    }
+    // For IRYS testnet, use mainnet() method
+    irysInstance = await uploader.mainnet();
     
     await irysInstance.ready();
   }
@@ -59,20 +54,31 @@ export async function getBalance(): Promise<string> {
 
 export async function fundWallet(amount: number) {
   const irys = await getIrys();
-  const atomicAmount = irys.utils.toAtomic(amount);
-  const fundTx = await irys.fund(atomicAmount);
-  return fundTx;
+  
+  try {
+    // Convert to atomic units
+    const atomicAmount = irys.utils.toAtomic(amount);
+    console.log(`Funding with ${amount} IRYS (${atomicAmount} atomic units)`);
+    
+    const fundTx = await irys.fund(atomicAmount);
+    console.log("Fund transaction successful:", fundTx);
+    return fundTx;
+  } catch (error) {
+    console.error("Detailed funding error:", error);
+    throw error;
+  }
 }
 
 export async function saveHaiku(
   haikuText: string, 
-  topic: string
+  topic: string,
+  author: string
 ): Promise<{ id: string; timestamp: number }> {
   const irys = await getIrys();
   
   const tags = [
     { name: "application-id", value: APP_NAME },
-    { name: "user", value: irys.address },
+    { name: "user", value: author },
     { name: "topic", value: topic },
     { name: "content-type", value: "text/plain" },
     { name: "timestamp", value: Date.now().toString() },
@@ -93,7 +99,7 @@ export async function saveHaiku(
     text: haikuText,
     topic,
     timestamp: Date.now(),
-    author: irys.address,
+    author,
   };
   
   const cached = JSON.parse(
@@ -209,5 +215,24 @@ export async function getTokenSymbol(): Promise<string> {
     return irys.token || "IRYS";
   } catch {
     return "IRYS";
+  }
+}
+
+export async function generateHaiku(topic: string): Promise<string> {
+  try {
+    const response = await fetch('/api/generateHaiku', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic: topic.trim() }),
+    });
+
+    if (!response.ok) throw new Error('Failed to generate haiku');
+    
+    const data = await response.json();
+    return data.haiku;
+  } catch (error) {
+    console.error('Error generating haiku:', error);
+    // Fallback haiku
+    return `${topic} whispers soft\nNature's gentle melody\nPeace flows through my soul`;
   }
 }
