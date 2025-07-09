@@ -35,11 +35,11 @@ export function NeonButton({
       {...props}
     >
       {isLoading ? (
-        <span className="flex items-center gap-2">
-          <span className="animate-spin">⟳</span>
-          {children}
-        </span>
-      ) : children}
+  <span className="flex items-center gap-2">
+    <span className="animate-spin">⟳</span>
+    Loading...
+  </span>
+) : children}
     </button>
   );
 }
