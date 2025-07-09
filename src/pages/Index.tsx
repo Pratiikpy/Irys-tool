@@ -1,3 +1,12 @@
+import {
+  connectWallet,
+  getBalance,
+  fundWallet,
+  saveHaiku,
+  listUserHaiku,
+  generateHaiku,
+  getTokenSymbol,
+} from "@/lib/irys";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wallet, Sparkles, BookOpen, Plus, Loader2 } from "lucide-react";
