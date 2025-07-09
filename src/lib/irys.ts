@@ -44,11 +44,16 @@ export async function connectWallet() {
 export async function getBalance(): Promise<string> {
   try {
     const irys = await getIrys();
+    console.log("Irys instance:", irys);  // Debug log
     const balance = await irys.getLoadedBalance();
-    return irys.utils.fromAtomic(balance).toString();
+    console.log("Raw balance:", balance);  // Debug log
+    const formatted = irys.utils.fromAtomic(balance).toString();
+    console.log("Formatted balance:", formatted);  // Debug log
+    return formatted;
   } catch (error) {
-    console.error("Error getting balance:", error);
-    return "0";
+    console.error("DETAILED Error getting balance:", error);
+    // Don't just return "0" - show the actual error
+    throw error;  
   }
 }
 
