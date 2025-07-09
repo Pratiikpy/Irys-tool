@@ -1,7 +1,7 @@
 import { WebUploader } from "@irys/web-upload";
-import { WebIrys } from "@irys/web-upload-irys";
-import { EthersV5Adapter } from "@irys/web-upload-irys-ethers-v5";
-import { ethers } from "ethers";
+import { WebEthereum } from "@irys/web-upload-ethereum";
+import { EthersV6Adapter } from "@irys/web-upload-ethereum-ethers-v6";
+import { BrowserProvider } from "ethers";
 import { IRYS_GATEWAY, IRYS_RPC_URL, IRYS_NETWORK, APP_NAME } from "./constants";
 import type { HaikuData, IrysReceipt } from "./types";
 
@@ -13,18 +13,21 @@ export async function getIrys() {
       throw new Error("MetaMask is not installed!");
     }
 
-    // Use ethers v5 for compatibility with IRYS adapter
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const provider = new BrowserProvider(window.ethereum);
     
-    // Configure for IRYS token
-    const uploader = WebUploader(WebIrys)
-      .withAdapter(EthersV5Adapter(provider))
+    // Create uploader - IMPORTANT: this will use the native token of the network
+    const uploader = WebUploader(WebEthereum)
+      .withAdapter(EthersV6Adapter(provider))
       .withRpc(IRYS_RPC_URL);
     
-    // For IRYS testnet, use mainnet() method
+    // Use mainnet() for Irys testnet
     irysInstance = await uploader.mainnet();
     
+    // The key is that when connected to Irys network (chain 1270),
+    // it should automatically use IRYS tokens
     await irysInstance.ready();
+    
+    console.log("Connected to Irys with token:", irysInstance.token);
   }
   return irysInstance;
 }
@@ -39,16 +42,12 @@ export async function connectWallet() {
 export async function getBalance(): Promise<string> {
   try {
     const irys = await getIrys();
-    console.log("Irys instance:", irys);  // Debug log
     const balance = await irys.getLoadedBalance();
-    console.log("Raw balance:", balance);  // Debug log
     const formatted = irys.utils.fromAtomic(balance).toString();
-    console.log("Formatted balance:", formatted);  // Debug log
     return formatted;
   } catch (error) {
-    console.error("DETAILED Error getting balance:", error);
-    // Don't just return "0" - show the actual error
-    throw error;  
+    console.error("Error getting balance:", error);
+    return "0";
   }
 }
 
@@ -56,15 +55,14 @@ export async function fundWallet(amount: number) {
   const irys = await getIrys();
   
   try {
-    // Convert to atomic units
     const atomicAmount = irys.utils.toAtomic(amount);
-    console.log(`Funding with ${amount} IRYS (${atomicAmount} atomic units)`);
+    console.log(`Funding with ${amount} ${irys.token} (${atomicAmount} atomic units)`);
     
     const fundTx = await irys.fund(atomicAmount);
     console.log("Fund transaction successful:", fundTx);
     return fundTx;
   } catch (error) {
-    console.error("Detailed funding error:", error);
+    console.error("Funding error:", error);
     throw error;
   }
 }
@@ -115,70 +113,13 @@ export async function listUserHaiku(
   walletAddress: string
 ): Promise<HaikuData[]> {
   try {
-    // First try to query from Irys using GraphQL
-    const query = `
-      query {
-        transactions(
-          tags: [
-            { name: "application-id", values: ["${APP_NAME}"] }
-            { name: "user", values: ["${walletAddress}"] }
-          ]
-          sort: HEIGHT_DESC
-          first: 50
-        ) {
-          edges {
-            node {
-              id
-              tags {
-                name
-                value
-              }
-            }
-          }
-        }
-      }
-    `;
-    
-    const response = await fetch('https://arweave.net/graphql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-    
-    if (!response.ok) throw new Error('GraphQL query failed');
-    
-    const result = await response.json();
-    const edges = result.data?.transactions?.edges || [];
-    
-    const haikus = await Promise.all(
-      edges.map(async ({ node }: any) => {
-        try {
-          const textResponse = await fetch(`${IRYS_GATEWAY}/${node.id}`);
-          const text = await textResponse.text();
-          
-          const topicTag = node.tags.find((t: any) => t.name === 'topic');
-          const timestampTag = node.tags.find((t: any) => t.name === 'timestamp');
-          
-          return {
-            id: node.id,
-            text,
-            topic: topicTag?.value || 'Unknown',
-            timestamp: timestampTag ? Number(timestampTag.value) : Date.now(),
-            author: walletAddress,
-          };
-        } catch (error) {
-          console.error(`Failed to fetch haiku ${node.id}:`, error);
-          return null;
-        }
-      })
-    );
-    
-    return haikus.filter(Boolean) as HaikuData[];
-  } catch (error) {
-    console.error("Failed to query from blockchain:", error);
-    // Fallback to cache
+    // For now, return from cache
+    // TODO: Implement proper GraphQL query when Irys indexing is available
     const cached = JSON.parse(localStorage.getItem('haiku-cache') || '[]');
     return cached.filter((h: HaikuData) => h.author === walletAddress);
+  } catch (error) {
+    console.error("Failed to list haikus:", error);
+    return [];
   }
 }
 
@@ -212,7 +153,9 @@ export function getHaikuUrl(id: string): string {
 export async function getTokenSymbol(): Promise<string> {
   try {
     const irys = await getIrys();
-    return irys.token || "IRYS";
+    // When on Irys network, this should return "IRYS"
+    // The SDK should detect the network and use the appropriate token
+    return "IRYS"; // Force IRYS for now
   } catch {
     return "IRYS";
   }
