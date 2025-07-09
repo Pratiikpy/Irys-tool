@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Irys Haiku Journal Design System */
+/* All colors MUST be HSL for consistency */
+
+@layer base {
+  :root {
+    /* Irys Brand Colors */
+    --irys-black: 0 0% 0%;
+    --irys-purple: 264 100% 23%;
+    --irys-cyan: 177 100% 50%;
+    --irys-dark-purple: 264 100% 15%;
+    
+    /* Semantic tokens */
+    --background: var(--irys-black);
+    --foreground: 0 0% 100%;
+
+    --card: var(--irys-black);
+    --card-foreground: 0 0% 100%;
+
+    --popover: var(--irys-black);
+    --popover-foreground: 0 0% 100%;
+
+    --primary: var(--irys-cyan);
+    --primary-foreground: var(--irys-black);
+
+    --secondary: var(--irys-purple);
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: var(--irys-dark-purple);
+    --muted-foreground: 0 0% 70%;
+
+    --accent: var(--irys-cyan);
+    --accent-foreground: var(--irys-black);
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: var(--irys-purple);
+    --input: var(--irys-dark-purple);
+    --ring: var(--irys-cyan);
+
+    --radius: 0.75rem;
+
+    /* Glassmorphism effects */
+    --glass-bg: hsla(0, 0%, 100%, 0.05);
+    --glass-border: hsla(0, 0%, 100%, 0.1);
+    --glass-backdrop: blur(20px);
+    
+    /* Glow effects */
+    --glow-cyan: 0 0 20px hsl(var(--irys-cyan) / 0.5);
+    --glow-purple: 0 0 20px hsl(var(--irys-purple) / 0.5);
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--irys-purple)), hsl(var(--irys-dark-purple)));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--irys-cyan)), hsl(var(--irys-purple)));
+    --gradient-radial: radial-gradient(circle at 50% 50%, hsl(var(--irys-purple) / 0.3), transparent 70%);
+
+    --sidebar-background: var(--irys-black);
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: var(--irys-cyan);
+    --sidebar-primary-foreground: var(--irys-black);
+    --sidebar-accent: var(--irys-purple);
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: var(--irys-purple);
+    --sidebar-ring: var(--irys-cyan);
+  }
+
+  .dark {
+    /* Dark mode uses same colors - this is a dark-first design */
+    --background: var(--irys-black);
+    --foreground: 0 0% 100%;
+    --card: var(--irys-black);
+    --card-foreground: 0 0% 100%;
+    --popover: var(--irys-black);
+    --popover-foreground: 0 0% 100%;
+    --primary: var(--irys-cyan);
+    --primary-foreground: var(--irys-black);
+    --secondary: var(--irys-purple);
+    --secondary-foreground: 0 0% 100%;
+    --muted: var(--irys-dark-purple);
+    --muted-foreground: 0 0% 70%;
+    --accent: var(--irys-cyan);
+    --accent-foreground: var(--irys-black);
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: var(--irys-purple);
+    --input: var(--irys-dark-purple);
+    --ring: var(--irys-cyan);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+    background-image: var(--gradient-radial);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass morphism card */
+  .glass-card {
+    @apply backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Neon glow button */
+  .neon-button {
+    @apply relative overflow-hidden rounded-lg px-6 py-3 font-display font-medium;
+    @apply bg-gradient-to-r from-primary to-secondary text-primary-foreground;
+    @apply border border-primary/50 transition-all duration-300;
+    @apply hover:shadow-[0_0_20px_hsl(var(--primary)/0.5)] hover:scale-105;
+  }
+  
+  /* Haiku text styling */
+  .haiku-text {
+    @apply font-display text-lg leading-relaxed text-center;
+    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+  
+  /* Pulse animation for connectivity */
+  .pulse-glow {
+    @apply animate-pulse;
+    box-shadow: var(--glow-cyan);
+  }
+}
