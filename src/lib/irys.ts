@@ -7,27 +7,51 @@ import type { HaikuData, IrysReceipt } from "./types";
 
 let irysInstance: any = null;
 
+// Custom configuration for IRYS testnet
+const IRYS_TESTNET_CONFIG = {
+  url: "https://testnet.irys.xyz",
+  token: "irys",
+  providerUrl: IRYS_RPC_URL,
+};
+
 export async function getIrys() {
   if (!irysInstance) {
     if (!window.ethereum) {
       throw new Error("MetaMask is not installed!");
     }
 
-    const provider = new BrowserProvider(window.ethereum);
-    
-    // Create uploader - IMPORTANT: this will use the native token of the network
-    const uploader = WebUploader(WebEthereum)
-      .withAdapter(EthersV6Adapter(provider))
-      .withRpc(IRYS_RPC_URL);
-    
-    // Use mainnet() for Irys testnet
-    irysInstance = await uploader.mainnet();
-    
-    // The key is that when connected to Irys network (chain 1270),
-    // it should automatically use IRYS tokens
-    await irysInstance.ready();
-    
-    console.log("Connected to Irys with token:", irysInstance.token);
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      
+      // Get the network to confirm we're on Irys testnet
+      const network = await provider.getNetwork();
+      console.log("Connected to network:", network.chainId);
+      
+      if (network.chainId !== 1270n) {
+        throw new Error("Please switch to Irys Testnet (Chain ID: 1270) in MetaMask");
+      }
+      
+      // Create uploader instance
+      const uploader = WebUploader(WebEthereum)
+        .withAdapter(EthersV6Adapter(provider))
+        .withRpc(IRYS_RPC_URL);
+      
+      // Use mainnet() for Irys testnet (this is correct according to docs)
+      irysInstance = await uploader.mainnet();
+      
+      await irysInstance.ready();
+      
+      // Log configuration
+      console.log("Irys instance created:", {
+        address: irysInstance.address,
+        token: irysInstance.token,
+        url: irysInstance.url,
+      });
+      
+    } catch (error) {
+      console.error("Failed to initialize Irys:", error);
+      throw error;
+    }
   }
   return irysInstance;
 }
@@ -36,15 +60,35 @@ export async function connectWallet() {
   const accounts = await window.ethereum.request({ 
     method: 'eth_requestAccounts' 
   });
+  
+  // Also request chain switch if needed
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x4F6' }], // 1270 in hex
+    });
+  } catch (error) {
+    console.log("Already on correct chain or user rejected");
+  }
+  
   return accounts[0];
 }
 
 export async function getBalance(): Promise<string> {
   try {
     const irys = await getIrys();
-    const balance = await irys.getLoadedBalance();
-    const formatted = irys.utils.fromAtomic(balance).toString();
-    return formatted;
+    
+    // Get the bundler balance (loaded balance)
+    const balanceAtomic = await irys.getLoadedBalance();
+    const balance = irys.utils.fromAtomic(balanceAtomic);
+    
+    console.log("Bundler balance:", {
+      atomic: balanceAtomic.toString(),
+      human: balance.toString(),
+      address: irys.address
+    });
+    
+    return balance.toString();
   } catch (error) {
     console.error("Error getting balance:", error);
     return "0";
@@ -55,14 +99,31 @@ export async function fundWallet(amount: number) {
   const irys = await getIrys();
   
   try {
-    const atomicAmount = irys.utils.toAtomic(amount);
-    console.log(`Funding with ${amount} ${irys.token} (${atomicAmount} atomic units)`);
+    console.log("Starting fund process for", amount, "tokens");
     
+    // Convert to atomic units
+    const atomicAmount = irys.utils.toAtomic(amount);
+    console.log("Atomic amount:", atomicAmount.toString());
+    
+    // Fund the bundler
     const fundTx = await irys.fund(atomicAmount);
-    console.log("Fund transaction successful:", fundTx);
+    console.log("Fund transaction result:", fundTx);
+    
+    // Wait for confirmation
+    console.log("Waiting for funding confirmation...");
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+    
+    // Check new balance
+    const newBalance = await getBalance();
+    console.log("New balance after funding:", newBalance);
+    
+    if (parseFloat(newBalance) === 0) {
+      throw new Error("Funding may have failed - balance still shows 0. Please try again.");
+    }
+    
     return fundTx;
   } catch (error) {
-    console.error("Funding error:", error);
+    console.error("Detailed funding error:", error);
     throw error;
   }
 }
@@ -74,6 +135,14 @@ export async function saveHaiku(
 ): Promise<{ id: string; timestamp: number }> {
   const irys = await getIrys();
   
+  // Check balance before uploading
+  const currentBalance = await getBalance();
+  console.log("Current balance before upload:", currentBalance);
+  
+  if (parseFloat(currentBalance) < 0.0001) {
+    throw new Error("Insufficient bundler balance. Please fund your account first.");
+  }
+  
   const tags = [
     { name: "application-id", value: APP_NAME },
     { name: "user", value: author },
@@ -82,41 +151,49 @@ export async function saveHaiku(
     { name: "timestamp", value: Date.now().toString() },
   ];
   
-  const receipt = await irys.upload(haikuText, { tags });
-  
-  // Store receipt for verification
-  const receipts = JSON.parse(
-    localStorage.getItem('haiku-receipts') || '{}'
-  );
-  receipts[receipt.id] = receipt;
-  localStorage.setItem('haiku-receipts', JSON.stringify(receipts));
-  
-  // Also cache locally for quick access
-  const newHaiku: HaikuData = {
-    id: receipt.id,
-    text: haikuText,
-    topic,
-    timestamp: Date.now(),
-    author,
-  };
-  
-  const cached = JSON.parse(
-    localStorage.getItem('haiku-cache') || '[]'
-  );
-  cached.unshift(newHaiku);
-  localStorage.setItem('haiku-cache', JSON.stringify(cached));
-  
-  return { id: receipt.id, timestamp: Date.now() };
+  try {
+    console.log("Uploading haiku...");
+    const receipt = await irys.upload(haikuText, { tags });
+    console.log("Upload successful! Receipt:", receipt);
+    
+    // Store receipt for verification
+    const receipts = JSON.parse(
+      localStorage.getItem('haiku-receipts') || '{}'
+    );
+    receipts[receipt.id] = receipt;
+    localStorage.setItem('haiku-receipts', JSON.stringify(receipts));
+    
+    // Also cache locally
+    const newHaiku: HaikuData = {
+      id: receipt.id,
+      text: haikuText,
+      topic,
+      timestamp: Date.now(),
+      author,
+    };
+    
+    const cached = JSON.parse(
+      localStorage.getItem('haiku-cache') || '[]'
+    );
+    cached.unshift(newHaiku);
+    localStorage.setItem('haiku-cache', JSON.stringify(cached));
+    
+    return { id: receipt.id, timestamp: Date.now() };
+  } catch (error) {
+    console.error("Upload error:", error);
+    throw error;
+  }
 }
 
 export async function listUserHaiku(
   walletAddress: string
 ): Promise<HaikuData[]> {
   try {
-    // For now, return from cache
-    // TODO: Implement proper GraphQL query when Irys indexing is available
+    // Return from local cache for now
     const cached = JSON.parse(localStorage.getItem('haiku-cache') || '[]');
-    return cached.filter((h: HaikuData) => h.author === walletAddress);
+    return cached.filter((h: HaikuData) => 
+      h.author.toLowerCase() === walletAddress.toLowerCase()
+    );
   } catch (error) {
     console.error("Failed to list haikus:", error);
     return [];
@@ -135,7 +212,7 @@ export async function verifyReceipt(transactionId: string): Promise<boolean> {
       return irys.utils.verifyReceipt(receipt);
     }
     
-    // Fallback: check if exists
+    // Check if exists on gateway
     const response = await fetch(`${IRYS_GATEWAY}/${transactionId}`, { 
       method: 'HEAD' 
     });
@@ -151,14 +228,8 @@ export function getHaikuUrl(id: string): string {
 }
 
 export async function getTokenSymbol(): Promise<string> {
-  try {
-    const irys = await getIrys();
-    // When on Irys network, this should return "IRYS"
-    // The SDK should detect the network and use the appropriate token
-    return "IRYS"; // Force IRYS for now
-  } catch {
-    return "IRYS";
-  }
+  // Force return IRYS for display purposes
+  return "IRYS";
 }
 
 export async function generateHaiku(topic: string): Promise<string> {
